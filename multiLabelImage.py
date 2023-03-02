@@ -21,19 +21,23 @@ LR = 0.01
 
 # torch.nn.functional.one_hot(torch.arange(0,5),10) 
 #--- fixed constants ---
-NUM_CLASSES = 24
+NUM_CLASSES = 14
 NUM_IMAGES = 20000
 img_dir = '../data/images'
-annotations_file = '../data/annotations/baby.txt'
+#annotations_file = '../data/annotations/baby.txt'
+label_names = ['baby','bird','car','clouds','dog','female','flower','male','night','people','portrait','river','sea','tree']
 import os
 import pandas as pd
 from torchvision.io import read_image
 
 #https://pytorch.org/tutorials/beginner/basics/data_tutorial.html#creating-a-custom-dataset-for-your-files
 class CustomImageDataset(torch.utils.data.Dataset):
-    def __init__(self, annotations_file, img_dir, transform=transforms.Grayscale(), target_transform=None):
-        one_hot = np.zeros(20000,dtype=int)
-        one_hot[np.loadtxt(annotations_file,dtype=int)-1] = 1 #  IS -1 NECESSARY??
+    def __init__(self, label_names, img_dir, transform=transforms.Grayscale(), target_transform=None):
+        
+        one_hot = np.zeros([20000,NUM_CLASSES],dtype=int)
+        for c in range(0, NUM_CLASSES-1):
+            annotations_file = '../data/annotations/' + label_names[c] + '.txt'            
+            one_hot[np.loadtxt(annotations_file,dtype=int)-1,c] = 1 #  IS -1 NECESSARY??
         #labels = np.loadtxt(annotations_file,dtype=int)-1
         self.img_labels = one_hot
         self.img_dir = img_dir
@@ -60,7 +64,7 @@ class CustomImageDataset(torch.utils.data.Dataset):
         return image, label
 
 
-mydata = CustomImageDataset(annotations_file,img_dir)
+mydata = CustomImageDataset(label_names,img_dir)
 # --- Dataset initialization ---
 [train_set, dev_set] = torch.utils.data.random_split(mydata, [int(NUM_IMAGES*0.5), int(NUM_IMAGES*0.5)],generator=torch.Generator().manual_seed(42))
 
@@ -88,7 +92,7 @@ class CNN(nn.Module):
           #nn.MaxPool2d(2,None)
         )
         self.layer2 = nn.Sequential(
-            nn.Linear(19220,2)
+            nn.Linear(19220,14)
             #torch.nn.Dropout(p=0.35, inplace=False)
         )
         
@@ -111,7 +115,7 @@ model = CNN().to(device)
 #optimizer = optim.SGD(model.parameters(), lr=LR)
 optimizer = optim.SGD(model.parameters(), lr=LR,momentum=0.9)
 #optimizer = optim.Adam(model.parameters(), lr=LR)
-loss_function = nn.CrossEntropyLoss()
+loss_function = nn.BCEWithLogitsLoss()
 dev_accuracies = np.zeros([1,N_EPOCHS])
 
 #--- training ---
@@ -126,7 +130,8 @@ for epoch in range(N_EPOCHS):
         data = data.float() # THIS SHOULD BE MOVED TO INIT SOMEHOW, SOLVES THE 
         # PROBLEM OF EXPECTED TYPE BYTE/FLOAT PROBLEM
         prediction = model(data)
-        target = target.long()
+        #target = target.long()
+        target = target.float()
         loss = loss_function(prediction, target)
         # l2 regularization
         l2_lambda = 0.001
@@ -138,9 +143,16 @@ for epoch in range(N_EPOCHS):
         loss.backward()
         optimizer.step()
         
-        _, predLabel = torch.max(prediction, 1)
-        total += target.size(0)
-        train_correct += (predLabel == target).sum().item()
+        #_, predLabel = torch.max(prediction, 1)
+        total += target.size(0)*target.size(1)
+        
+        # this is silly way to decide which values are predicting that is
+        #this label and which that isn't, NEED TO BE FIXED
+        outmap_min, _ = torch.min(prediction, dim=1, keepdim=True)
+        outmap_max, _ = torch.max(prediction, dim=1, keepdim=True)
+        prediction = (prediction - outmap_min) / (outmap_max - outmap_min)
+        prediction = prediction.round()
+        train_correct += (prediction == target).sum().item()
             
         #if batch_num == len(train_loader)-1:
         print('Training: Epoch %d - Batch %d/%d: Loss: %.4f | Train Acc: %.3f%% (%d/%d)' % 
@@ -154,17 +166,23 @@ for epoch in range(N_EPOCHS):
     dev_total = 0
     for dev_batch_num, (dev_data, dev_target) in enumerate(dev_loader):
         dev_data, target = dev_data.to(device), dev_target.to(device)
+        dev_data = dev_data.float()
         devPrediction = model.forward(dev_data)
-        _, devLabel = torch.max(devPrediction,1)
+        target = dev_target.float()
+        #_, devLabel = torch.max(devPrediction,1)
+        
+        outmap_min, _ = torch.min(devPrediction, dim=1, keepdim=True)
+        outmap_max, _ = torch.max(devPrediction, dim=1, keepdim=True)
+        devPrediction = (devPrediction - outmap_min) / (outmap_max - outmap_min)
+        devPrediction = devPrediction.round()
         
         
-        
-        dev_total += target.size(0)
-        dev_correct += (devLabel == target).sum().item()
+        dev_total += target.size(0)*target.size(1)
+        dev_correct += (devPrediction == target).sum().item()
         
         #if epoch =
-        if dev_batch_num == len(dev_loader)-1:
-            print('Dev test: Epoch %d - Batch %d/%d: Dev Acc: %.3f%% (%d/%d)' % 
+        #if dev_batch_num == len(dev_loader)-1:
+        print('Dev test: Epoch %d - Batch %d/%d: Dev Acc: %.3f%% (%d/%d)' % 
               (epoch, dev_batch_num, len(dev_loader), 
                100. * dev_correct / dev_total, dev_correct, dev_total))
     dev_accuracies[0,epoch] = dev_correct / dev_total
