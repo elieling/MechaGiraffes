@@ -34,6 +34,7 @@ class CustomImageDataset(torch.utils.data.Dataset):
     def __init__(self, annotations_file, img_dir, transform=transforms.Grayscale(), target_transform=None):
         one_hot = np.zeros(20000,dtype=int)
         one_hot[np.loadtxt(annotations_file,dtype=int)-1] = 1 #  IS -1 NECESSARY??
+        #labels = np.loadtxt(annotations_file,dtype=int)-1
         self.img_labels = one_hot
         self.img_dir = img_dir
         self.transform = transform
@@ -44,7 +45,7 @@ class CustomImageDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         #img_path = os.path.join(self.img_dir, self.img_labels.iloc[idx, 0]) # when transfomrmed to dataframe with multiple columns..?
-        im_name = 'im%d.jpg' % idx
+        im_name = 'im%s.jpg' % str(idx+1)
         img_path = os.path.join(self.img_dir, im_name)
         image = read_image(img_path)
         
@@ -73,27 +74,27 @@ dev_loader = torch.utils.data.DataLoader(dataset=dev_set, batch_size=BATCH_SIZE_
 class CNN(nn.Module):
     def __init__(self, num_classes=NUM_CLASSES):
         super(CNN, self).__init__()
-       # self.layer1 = nn.Sequential(
-       #   nn.Conv2d(1,32,3),
-       ##   torch.nn.InstanceNorm2d(32),
-        #  nn.ReLU(), 
-        #  torch.nn.Dropout(p=0.35, inplace=False),
-        #  nn.MaxPool2d(2,None),
+        self.layer1 = nn.Sequential(
+          nn.Conv2d(1,5,5),
+          torch.nn.InstanceNorm2d(32),
+          nn.ReLU(), 
+          torch.nn.Dropout(p=0.35, inplace=False),
+          nn.MaxPool2d(2,None)
           
           #nn.Conv2d(32,24,5),
           #torch.nn.InstanceNorm2d(32),
           #nn.ReLU(), 
           #torch.nn.Dropout(p=0.35, inplace=False),
           #nn.MaxPool2d(2,None)
-       # )
+        )
         self.layer2 = nn.Sequential(
-            nn.Linear(128,NUM_CLASSES)
+            nn.Linear(19220,2)
             #torch.nn.Dropout(p=0.35, inplace=False)
         )
         
     def forward(self, x):
-        #x = self.layer1(x)
-       # x = torch.flatten(x, 1)
+        x = self.layer1(x)
+        x = torch.flatten(x, 1)
         x = self.layer2(x)
         
         return x
@@ -125,8 +126,8 @@ for epoch in range(N_EPOCHS):
         data = data.float() # THIS SHOULD BE MOVED TO INIT SOMEHOW, SOLVES THE 
         # PROBLEM OF EXPECTED TYPE BYTE/FLOAT PROBLEM
         prediction = model(data)
+        target = target.long()
         loss = loss_function(prediction, target)
-        
         # l2 regularization
         l2_lambda = 0.001
         l2_norm = sum(p.pow(2.0).sum()
@@ -141,10 +142,10 @@ for epoch in range(N_EPOCHS):
         total += target.size(0)
         train_correct += (predLabel == target).sum().item()
             
-       # if batch_num == len(train_loader)-1:
-       #     print('Training: Epoch %d - Batch %d/%d: Loss: %.4f | Train Acc: %.3f%% (%d/%d)' % 
-       #       (epoch, batch_num, len(train_loader), train_loss / (batch_num + 1), 
-       #        100. * train_correct / total, train_correct, total))
+        #if batch_num == len(train_loader)-1:
+        print('Training: Epoch %d - Batch %d/%d: Loss: %.4f | Train Acc: %.3f%% (%d/%d)' % 
+              (epoch, batch_num, len(train_loader), train_loss / (batch_num + 1), 
+               100. * train_correct / total, train_correct, total))
     
     
     # WRITE CODE HERE
