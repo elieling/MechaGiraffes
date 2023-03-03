@@ -249,7 +249,7 @@ for epoch in range(N_EPOCHS):
         falsePositives += torch.count_nonzero(falsePos,dim=0)
         falseNegatives += torch.count_nonzero(falseNeg,dim=0)
         chance_correct_dev += torch.count_nonzero(dev_target-1).item()
-        print('target amounts dev %d' % dev_target.sum())
+        print('target amounts dev %d' % target.sum())
         
         correct_over_chance = dev_correct - chance_correct_dev
         
