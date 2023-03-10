@@ -13,17 +13,18 @@ import pandas as pd
 from torchvision.io import read_image
 
 #--- hyperparameters ---
-N_EPOCHS = 50   
-BATCH_SIZE_TRAIN = 10
-BATCH_SIZE_TEST = 100
+N_EPOCHS = 50
+
+BATCH_SIZE_TRAIN = 50
+BATCH_SIZE_TEST = 50
 LR = 0.001
 
 
 # torch.nn.functional.one_hot(torch.arange(0,5),10) 
 #--- fixed constants ---
-NUM_CLASSES = 1
-NUM_IMAGES = 20000
-img_dir = '../data/images'
+NUM_CLASSES = 14             # 14
+NUM_IMAGES = 2000              # 20000
+img_dir = './data/images'
 
 #annotations_file = '../data/annotations/baby.txt'
 
@@ -32,11 +33,11 @@ img_dir = '../data/images'
 #--- get images and make multi-hot-matrix ---
 #label_names = ['baby','bird','car','clouds','dog','female','flower','male','night','people','portrait','river','sea','tree']
 # NOTE NOTE NOTE TAKES THE FIRST LABEL FROM HERE, SO CHANGE THAT TO USE SOME OTHER
-label_names = ['people','bird','car','clouds','dog','female','flower','male','night','people','portrait','river','sea','tree']
+label_names = ['baby','bird','car','clouds','dog','female','flower','male','night','people','portrait','river','sea','tree']
 label_names = label_names[0:NUM_CLASSES]
 one_hot = np.zeros([20000,NUM_CLASSES],dtype=int)
 for c in range(0, NUM_CLASSES):
-    annotations_file = '../data/annotations/' + label_names[c] + '.txt'            
+    annotations_file = './data/annotations/' + label_names[c] + '.txt'            
     one_hot[np.loadtxt(annotations_file,dtype=int)-1,c] = 1 #  IS -1 NECESSARY??
 #labels = np.loadtxt(annotations_file,dtype=int)-1
 
@@ -78,6 +79,8 @@ class CustomImageDataset(torch.utils.data.Dataset):
             transforms.RandomHorizontalFlip(p=0.5),
             transforms.ToTensor()
         ])
+
+        #image = image.transform(transform)
         
         if self.transform:
             if torch.Tensor.size(image,0) == 3:
@@ -129,20 +132,20 @@ class CNN(nn.Module):
     def __init__(self, num_classes=NUM_CLASSES):
         super(CNN, self).__init__()
         self.layer1 = nn.Sequential(
-          nn.Conv2d(1,32,5, padding=1),              #nn.Conv2d(1,10,5),  32     
+          nn.Conv2d(1,16,5, padding=1),              #nn.Conv2d(1,10,5),  32     
           #torch.nn.InstanceNorm2d(10),
           #nn.ReLU(), 
           #torch.nn.Dropout(p=0.3, inplace=False),
           nn.MaxPool2d(2,2),                 # nn.MaxPool2d(2,None),   
   
           # two layers
-          nn.Conv2d(32,64,5,padding=1),              #nn.Conv2d(10,5,5,padding=0), 64
+          nn.Conv2d(16,32,5,padding=1),              #nn.Conv2d(10,5,5,padding=0), 64
           #torch.nn.InstanceNorm2d(5),
           #nn.ReLU(), 
           #torch.nn.Dropout(p=0.3, inplace=False),
           nn.MaxPool2d(2,2),                 # nn.MaxPool2d(2,None),   
           
-          nn.Conv2d(64,128,9,padding=1),               # nn.Conv2d(5,5,9,padding=1), 128
+          nn.Conv2d(32,64,9,padding=1),               # nn.Conv2d(5,5,9,padding=1), 128
           #torch.nn.InstanceNorm2d(2),
           nn.ReLU(), 
           #torch.nn.Dropout(p=0.3, inplace=False),
@@ -152,10 +155,10 @@ class CNN(nn.Module):
         )
         self.layer2 = nn.Sequential(
             #nn.Linear(1960,1), 
-            nn.Linear(128 * 12 * 12, 256),           # 256
+            nn.Linear(64 * 12 * 12, 128),           # 256
             #nn.Linear(256,5),                  # nn.Linear(605,50),
             nn.Sigmoid(),
-            nn.Linear(256,1),                    # nn.Linear(50,1),
+            nn.Linear(128,1),                    # nn.Linear(50,1),
             nn.Sigmoid()
         )
         
@@ -280,18 +283,20 @@ for epoch in range(N_EPOCHS):
             #  (epoch, batch_num+1, len(train_loader), train_loss / (batch_num + 1), 
             #   100. * correct_over_chance / total, train_correct, total))
             #print('False Positives, false negatives %')
-            false_pos = (100. * falsePositives / (total / NUM_CLASSES)).item()
-            false_neg = (100. * falseNegatives / (total / NUM_CLASSES)).item()
+#            false_pos = (100. * falsePositives / (total / NUM_CLASSES)).item()
+#            false_neg = (100. * falseNegatives / (total / NUM_CLASSES)).item()
             #print('False positives: %.2f%%, False negatives: %.2f%%' % (false_pos,false_neg))
             #print(100. * falseNegatives / (total / NUM_CLASSES))
             #---print('FPs: %.3f%%  FN:s: %.3f%% ' % ((100. * falsePositives.sum() / total).item(),
             #      (100. * falseNegatives.sum() / total).item()))
+    total = total / NUM_CLASSES
     print("+"*70)
-    print('Training: Epoch %d - Batch %d/%d: Loss: %.4f | Train Acc: %.3f%% (%d/%d)' % 
-              (epoch, batch_num, len(train_loader), train_loss / (batch_num + 1), 
-               100. * train_correct / total, train_correct, total))        
+    for m in range(NUM_CLASSES):
+        print('Training: Epoch %d - Batch %d/%d: Loss: %.4f | Train Acc: %.3f%% (%d/%d)' % 
+                (epoch, batch_num, len(train_loader), train_loss[m] / (batch_num + 1), 
+                100. * train_correct[m] / total, train_correct[m], total))        
     
-    print('False positives: %.2f%%, False negatives: %.2f%%' % (false_pos,false_neg))
+#    print('False positives: %.2f%%, False negatives: %.2f%%' % (false_pos,false_neg))
 
 
     # DEV TEST
@@ -337,14 +342,16 @@ for epoch in range(N_EPOCHS):
         falseNeg = falsePosNeg < 0 
         falsePositives += torch.count_nonzero(falsePos,dim=0)
         falseNegatives += torch.count_nonzero(falseNeg,dim=0)
-        
-        chance_correct_dev += torch.count_nonzero(dev_target-1).item()
+#        print("---",dev_target,"---")
+#        print(dev_target[:,m])
+#        chance_correct_dev += torch.count_nonzero(dev_target-1).item()
+#        print(chance_correct_dev)
         #print('target amounts dev %d' % dev_target.sum())
         
-        correct_over_chance = dev_correct.sum() - chance_correct_dev
+#        correct_over_chance = dev_correct[m].sum() - chance_correct_dev
         
         #if epoch =
-        if dev_batch_num < 10000: #== len(dev_loader)-1:
+        #if dev_batch_num < 10000: #== len(dev_loader)-1:
             #print('dev')
             #accuracies = 100.* dev_correct / total_oneLabel
             #print(accuracies.round().tolist())
@@ -354,19 +361,29 @@ for epoch in range(N_EPOCHS):
             #  (epoch, dev_batch_num+1, len(dev_loader), 
             #   100. * correct_over_chance / dev_total, dev_correct, dev_total))
             
-            false_pos = (100. * falsePositives / (total / NUM_CLASSES)).item()
-            false_neg = (100. * falseNegatives / (total / NUM_CLASSES)).item()
+#            false_pos = (100. * falsePositives / (total / NUM_CLASSES)).item()
+#            false_neg = (100. * falseNegatives / (total / NUM_CLASSES)).item()
             #print('False Positives, false negatives %')
             #print(100. * falsePositives / (total / NUM_CLASSES))
             #print(100. * falseNegatives / (total / NUM_CLASSES))
             #print('FPs: %.3f%%  FN:s: %.3f%% ' % ((100. * falsePositives.sum() / dev_total).item(),
             #      (100. * falseNegatives.sum() / dev_total).item()))
     print("*"*70)
-    print('Dev test: Epoch %d - Batch %d/%d: Dev Acc: %.3f%% (%d/%d) | Acc diff: %.3f%%' % 
-      (epoch, dev_batch_num+1, len(dev_loader), 100 * dev_correct.sum() / dev_total, dev_correct, dev_total, 
-       100. * correct_over_chance / dev_total)) 
-    print('False positives: %.2f%%, False negatives: %.2f%%' % (false_pos,false_neg))       
+    dev_total = dev_total / NUM_CLASSES
+    for m in range(NUM_CLASSES):
+        chance_correct_dev = torch.count_nonzero(dev_target[:,m]-1).item()
+        correct_over_chance = dev_correct[m].sum() - chance_correct_dev
+        #print(chance_correct_dev, dev_correct[m].sum())
+        #print(dev_correct)
+        print('Dev test: Epoch %d - Batch %d/%d: Dev Acc: %.3f%% (%d/%d) | Acc diff: %.3f%%' % 
+        (epoch, dev_batch_num+1, len(dev_loader), 100 * dev_correct[m].sum() / dev_total, dev_correct[m], dev_total, 
+        100. * correct_over_chance / dev_total)) 
+#    print('False positives: %.2f%%, False negatives: %.2f%%' % (false_pos,false_neg))       
     #dev_accuracies[0,epoch] = dev_correct / dev_total
+
+    for m in range(NUM_CLASSES):
+        file_name = "model" + str(m+1) + ".pth"
+        torch.save(model_list[m].state_dict(), file_name)
 
 
 
